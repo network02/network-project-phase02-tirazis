@@ -14,7 +14,7 @@ Port = 8081
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((Host, Port))
 while True:
-    user_input = input("Enter command: ")
+    user_input = input(">> ")
 
     if user_input.upper() == 'QUIT':
         client.send("QUIT\r\n".encode())
