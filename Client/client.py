@@ -1,18 +1,18 @@
 import socket
 
-
 def send_command(command, client_socket):
     client_socket.send(command.encode())
     response_ = client_socket.recv(1024).decode().strip()
     print("Server response:", response_)
     return response_
 
-
 # Set up client socket
-Host = 'localhost'
-Port = 8081
+Host = '127.0.0.1'  # Change this to the IP address of your server
+Port = 10021        # Make sure this matches the port your server is using
+
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((Host, Port))
+
 while True:
     user_input = input(">> ")
 
