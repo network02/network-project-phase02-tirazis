@@ -1,6 +1,5 @@
 import socket
 import os
-import sys
 import threading
 import time
 
@@ -10,13 +9,18 @@ class FTPthread(threading.Thread):
         self.client = client
         self.client_address = clientaddress
         self.data_address = (localip, dataport)
-
+        self.cwd = os.getcwd
         threading.Thread.__init__(self)
+    
+
+    def run(self):
+        print('5555')
+        quit()
     
 
 class FTPserv:
     def __init__(self, port, dataport):
-        self.address = '127.0.0.1'
+        self.address = '0.0.0.0'
         self.port = int(port)
         self.dataport = int(dataport)
         
@@ -47,7 +51,7 @@ class FTPserv:
         except:
             print('closing')
             self.sock.close()
-            quit
+            quit()
 
 
 
