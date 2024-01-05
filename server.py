@@ -2,7 +2,11 @@ import socket
 import os
 import threading
 import time
-
+users = {
+    'user1': {'username': 'Mehdi', 'password': '1234'},
+    'user2': {'username': 'Bob', 'password': '25'},
+    'user3': {'username': 'John', 'password': '35'},
+}
 
 class FTPthread(threading.Thread):
     def __init__(self, client, clientaddress, localip, dataport):
@@ -14,8 +18,22 @@ class FTPthread(threading.Thread):
     
 
     def run(self):
-        print('5555')
-        quit()
+        print('connected : ', self.client_address)     
+        while True:   
+            cmd = self.client.recv(1024)
+            str_cmd = cmd.decode().strip()
+            user_str_cmds = str_cmd.split(' ')
+            user_command = user_str_cmds[0].upper()
+            username = user_str_cmds[1]
+            print(user_command, ' : ', username)
+            if user_command == 'USER':
+                for user, info in users.items():
+                    if info['username'] == username:
+                        print(info['password'])
+                    
+
+            
+            
     
 
 class FTPserv:
