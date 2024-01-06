@@ -57,14 +57,31 @@ class FTPthread(threading.Thread):
 
     def switches(self):
         self.client.send('aaaaaaaaaaaaaaaa'.encode())
-        command = self.client.recv(1024).decode().strip().upper()
-        match command:
-            case 'LIST':
+        while True:
+            command = self.client.recv(1024).decode().strip()
+            if command.startswith('LIST'):
                 self.listt()
-                
+                continue
+            elif command.startswith('MKD'):
+                dir_name = command.split(' ')[1]
+                self.MKD(dir_name)
 
     def listt(self):
-        self.client.send('LIST ... .. . '.encode())        
+        self.client.send('LIST ... .. . '.encode()) 
+
+    def MKD(self, dir_name) :
+        try:
+            if os.path.isabs(dir_name):
+                os.mkdir(dir_name)
+                self.client.send(f"257 '{dir_name}' directory created\r\n".encode())
+            else:
+                abs_path = os.path.join(self.cwd(), dir_name)
+                os.mkdir(abs_path)
+                self.client.send(f"257 '{abs_path}' directory created\r\n".encode())
+        except FileExistsError:
+            self.client.send(f"550 Directory '{dir_name}' already exists\r\n".encode())
+        except Exception as e:
+            self.client.send(f"550 Failed to create directory '{dir_name}': {str(e)}\r\n".encode())      
 
 
 
@@ -116,8 +133,8 @@ class FTPserv:
 
 
 
-port = input('port: ')
-data_port = input('data port: ')
+port = '10021'
+data_port = '10020'
 ftpserver = FTPserv(port, data_port)
 print(ftpserver.address)
 ftpserver.startt()
