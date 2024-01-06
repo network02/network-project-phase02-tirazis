@@ -68,6 +68,11 @@ class FTPthread(threading.Thread):
             elif command.startswith('CWD'):
                 self.CWD()
                 continue
+            elif command.startswith('RMD'):
+                dir_name = command.split(' ')[1]
+                self.RMD(dir_name)
+                continue
+
 
     def listt(self):
         self.client.send('LIST ... .. . '.encode()) 
@@ -88,6 +93,27 @@ class FTPthread(threading.Thread):
     def CWD(self):
         respond = os.getcwd()
         self.client.send(f"257 Current working directory is '{respond}'\r\n".encode())
+    def RMD(self, dir_name):
+        if os.path.isabs(dir_name):
+            None
+        else:
+            abs_path = os.path.join(self.cwd(), dir_name)    
+        is_empty = not os.listdir(abs_path)
+        try:
+            if is_empty is True:
+                os.rmdir(dir_name)
+                self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())
+            else:
+                os.removedirs(dir_name)
+                self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())    
+        except:
+            self.client.send(f"550 Directory '{dir_name}' cant be removed\r\n".encode())
+
+            
+        
+
+
+
 
 
 
