@@ -29,7 +29,49 @@ class FTPthread(threading.Thread):
             if user_command == 'USER':
                 for user, info in users.items():
                     if info['username'] == username:
-                        print(info['password'])
+                        self.client.send("331 Enter password\r\n".encode())
+                        try:
+                            data = self.client.recv(1024).decode().strip()
+                            print("Received:", data)
+                            user_str_cmds = data.split(' ')
+                            user_command = user_str_cmds[0].upper()
+                            password = user_str_cmds[1]
+                            if info['password'] == password:
+                                self.client.send("230 Logged in successfully\r\n".encode())
+                                self.switches()
+                                break
+                            else:
+                                self.client.send("530 Login incorrect\r\n".encode())   
+                            break
+                        except:
+                            self.client.send("500 Syntax error, command unrecognized\r\n".encode())
+                            continue
+                    else:
+                        self.client.send("530 User not found\r\n".encode()) 
+            elif user_command == 'QUIT':
+                self.client.send("221 Goodbye!\r\n".encode())
+                break
+            else:
+                self.client.send("500 Syntax error, command unrecognized\r\n".encode())
+        self.client.close()
+
+    def switches(self):
+        self.client.send('aaaaaaaaaaaaaaaa'.encode())
+        command = self.client.recv(1024).decode().strip().upper()
+        match command:
+            case 'LIST':
+                self.listt()
+                
+
+    def listt(self):
+        self.client.send('LIST ... .. . '.encode())        
+
+
+
+
+
+
+
                     
 
             
