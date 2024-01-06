@@ -65,8 +65,8 @@ class FTPthread(threading.Thread):
                 dir_name = command.split(' ')[1]
                 self.MKD(dir_name)
                 continue
-            elif command.startswith('CWD'):
-                self.CWD()
+            elif command.startswith('PWD'):
+                self.PWD()
                 continue
             elif command.startswith('RMD'):
                 dir_name = command.split(' ')[1]
@@ -90,7 +90,7 @@ class FTPthread(threading.Thread):
             self.client.send(f"550 Directory '{dir_name}' already exists\r\n".encode())
         except Exception as e:
             self.client.send(f"550 Failed to create directory '{dir_name}': {str(e)}\r\n".encode())   
-    def CWD(self):
+    def PWD(self):
         respond = os.getcwd()
         self.client.send(f"257 Current working directory is '{respond}'\r\n".encode())
     def RMD(self, dir_name):
