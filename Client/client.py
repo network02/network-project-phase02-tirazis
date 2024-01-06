@@ -16,6 +16,7 @@ client.connect((Host, Port))
 while True:
     user_input = input(">> ")
 
+
     if user_input.upper() == 'QUIT':
         client.send("QUIT\r\n".encode())
         break
