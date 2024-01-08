@@ -75,7 +75,7 @@ class FTPthread(threading.Thread):
                 user_command = user_str_cmds[0].upper()
                 username = user_str_cmds[1]
             except:
-                self.client.send('test1'.encode())
+                self.client.send('500 Syntax error, command unrecognized\r\n'.encode())
                 continue
             # Handle USER-Login
             if user_command == 'USER':
@@ -118,7 +118,7 @@ class FTPthread(threading.Thread):
                 pathname = ''
                 parts = command.split(' ')
                 if len(parts) > 1:
-                    pathname = parts[1]
+                    dir_name = command[5:]
                 self.LIST(pathname)
                 continue
             # Download a file from server
@@ -133,12 +133,12 @@ class FTPthread(threading.Thread):
                 continue
             # Delete a file in server
             elif command.startswith('DELE'):
-                filename = command.split(' ')[1]
+                dir_name = command[5:]
                 self.DELE(filename)
                 continue
             # Create a new directory
             elif command.startswith('MKD'):
-                dir_name = command.split(' ')[1]
+                dir_name = command[4:]
                 self.MKD(dir_name)
                 continue
             # Returns the current working directory
@@ -147,10 +147,19 @@ class FTPthread(threading.Thread):
                 continue
             #
             elif command.startswith('RMD'):
-                dir_name = command.split(' ')[1]
+                dir_name = command[4:]
                 self.RMD(dir_name)
                 continue
-
+            # Change directory in server side
+            elif command.startswith('CWD'):
+                dir_name = command[4:]
+                self.CWD(dir_name)
+                continue
+            elif command.startswith('CDUP'):
+                dir_name = command[4:]
+                self.CDUP()
+                continue
+            
     def LIST(self, pathname=''):
         try:
             if pathname:
@@ -247,19 +256,51 @@ class FTPthread(threading.Thread):
 
     def RMD(self, dir_name):
         if os.path.isabs(dir_name):
-            None
+            abs_path = dir_name
         else:
             abs_path = os.path.join(self.cwd(), dir_name)
         is_empty = not os.listdir(abs_path)
         try:
             if is_empty is True:
-                os.rmdir(dir_name)
-                self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())
+                os.rmdir(abs_path)
+                self.client.send(f"250 Directory '{abs_path}' deleted successfully\r\n".encode())
             else:
-                os.removedirs(dir_name)
-                self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())
+                os.removedirs(abs_path)
+                self.client.send(f"250 Directory '{abs_path}' deleted successfully\r\n".encode())
         except:
-            self.client.send(f"550 Directory '{dir_name}' cant be removed\r\n".encode())
+            self.client.send(f"550 Directory '{abs_path}' cant be removed\r\n".encode())
+    def CWD(self, dir_name):
+        if dir_name.startswith('"') and dir_name.endswith('"'):
+                dir_name = dir_name[1:-1]
+        if os.path.isabs(dir_name):
+            abs_path = dir_name
+        else:
+            abs_path = os.path.join(self.cwd(), dir_name)
+        try:
+            os.chdir(abs_path)
+            self.client.send(f"250 Directory changed to '{abs_path}'\r\n".encode())
+        except FileNotFoundError:
+            self.client.send(f"550 Directory '{abs_path}' not found\r\n".encode())
+        except PermissionError:
+            self.client.send(f"550 Permission denied for directory '{abs_path}'\r\n".encode())
+        except Exception as e:
+            self.client.send(f"550 Failed to change directory to '{abs_path}': {str(e)}\r\n".encode())
+    def CDUP(self):
+        
+        try:
+            current_directory = os.getcwd()
+            parent_directory = os.path.dirname(current_directory)
+            os.chdir(parent_directory)
+            self.client.send(f"250 Directory changed to '{parent_directory}'\r\n".encode())
+        except FileNotFoundError:
+            self.client.send(f"550 Parent directory not found\r\n".encode())
+        except PermissionError:
+            self.client.send(f"550 Permission denied for parent directory\r\n".encode())
+        except Exception as e:
+            self.client.send(f"550 Failed to change to parent directory: {str(e)}\r\n".encode())
+        
+
+
 
 
 class FTP_server:
