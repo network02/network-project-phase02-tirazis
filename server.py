@@ -74,12 +74,6 @@ def check_access(filename, username):
 
 
 class FTPthread(threading.Thread):
-    access_control = {
-        "private_file.txt": ["Reza", "Ali"],
-        "private_directory": ["user1"],
-        # Add more entries as needed
-    }
-
     def __init__(self, client, clientaddress, localip, dataport):
         self.log_messages = ''
         self.client = client
@@ -88,8 +82,10 @@ class FTPthread(threading.Thread):
         self.cwd = os.getcwd
         threading.Thread.__init__(self)
 
-        self.conn = sqlite3.connect('users.db')  # Connect to the database
+        self.conn = sqlite3.connect('users.db', check_same_thread=False)  # Connect to the database
         self.cursor = self.conn.cursor()
+        self.report_conn = sqlite3.connect('user_actions.db', check_same_thread=False)
+        self.report_cursor = self.report_conn.cursor()
 
     def run(self):
         # Sending the welcome message to the client
@@ -112,13 +108,16 @@ class FTPthread(threading.Thread):
 
             # Handle USER-Login
             if user_command == 'LOGIN':
-                if user_str_cmds[1] == 'admin' and user_str_cmds[2] == 'admin':
-                    self.client.send("230 Logged in successfully\r\n".encode())
-                    self.switches(2, username)
-                    break
                 try:
+                    if user_str_cmds[1] == 'admin' and user_str_cmds[2] == 'admin':
+                        self.client.send("230 Logged in successfully\r\n".encode())
+                        self.switches(2, username)
+                        break
+
                     password = user_str_cmds[2]
                     if authenticate_user(username, password):
+                        # Log the action in the database
+                        self.log_action(username, f"LOGIN")
                         self.client.send("230 Logged in successfully\r\n".encode())
                         print(f'(!) USER \"{username}\" logged-in to server')
                         self.switches(1, username)
@@ -127,6 +126,8 @@ class FTPthread(threading.Thread):
                         self.client.send("530 Login incorrect\r\n".encode())
                         break
                 except:
+                    # Log the action in the database
+                    self.log_action(username, f"QUIT")
                     print(f"(!) USER \"{username}\" leaved from server")
                     break
                     # Handle SIGNUP
@@ -136,6 +137,8 @@ class FTPthread(threading.Thread):
                     password = user_str_cmds[2]
 
                     create_user(username, password)
+                    # Log the action in the database
+                    self.log_action(username, f"SIGNUP")
                     self.client.send("201 User created successfully\r\n".encode())
                     print(f'(!) USER \"{username}\" Signed-up in server')
                 except:
@@ -159,7 +162,7 @@ class FTPthread(threading.Thread):
                     parts = command.split(' ')
                     if len(parts) > 1:
                         pathname = parts[1]
-                    self.LIST(pathname)
+                    self.LIST(username, pathname)
                     continue
                 # Download a file from server
                 elif command.startswith('RETR'):
@@ -184,7 +187,7 @@ class FTPthread(threading.Thread):
                 elif command.startswith('DELE'):
                     filename = command.split(' ')[1]
                     if check_access(filename, username):
-                        self.DELE(filename)
+                        self.DELE(username, filename)
                         continue
                     else:
                         self.client.send("550 Permission denied\r\n".encode())
@@ -204,7 +207,7 @@ class FTPthread(threading.Thread):
                     self.RMD(dir_name)
                     continue
                 elif command.startswith('REPORT') and roll == 2:
-                    print('admin logged in')
+                    print('(!) Generating server-logs report for admin')
                     self.REPORT()
                     continue
                 else:
@@ -219,7 +222,7 @@ class FTPthread(threading.Thread):
         except Exception as e:
             error_msg = f"An error occurred while closing the database connection: {e}"
 
-    def LIST(self, pathname=''):
+    def LIST(self, username, pathname=''):
         try:
             if pathname:
                 files = os.listdir(pathname)
@@ -233,6 +236,8 @@ class FTPthread(threading.Thread):
                 response += f"{mod_time} {file_name}\r\n"
 
             response += "\n226 Directory listing completed\r\n"
+            # Log the action in the database
+            self.log_action(username, f"LIST: {pathname}")
             self.client.send(response.encode())
         except FileNotFoundError:
             self.client.send(f"550 Path '{pathname}' not found\r\n".encode())
@@ -280,9 +285,11 @@ class FTPthread(threading.Thread):
             except Exception as e:
                 print(f'ERROR: {str(self.client_address)}: {str(e)}')
 
-    def DELE(self, filename):
+    def DELE(self, username, filename):
         try:
             os.remove(filename)
+            # Log the action in the database
+            self.log_action(username, f"DELE: {filename}")
             self.client.send(f"250 File '{filename}' deleted successfully\r\n".encode())
 
         except FileNotFoundError:
@@ -290,25 +297,31 @@ class FTPthread(threading.Thread):
         except Exception as e:
             self.client.send(f"550 Failed to delete file '{filename}': {str(e)}\r\n".encode())
 
-    def MKD(self, dir_name):
+    def MKD(self, username, dir_name):
         try:
             if os.path.isabs(dir_name):
                 os.mkdir(dir_name)
+                # Log the action in the database
+                self.log_action(username, f"MKD: {dir_name}")
                 self.client.send(f"257 '{dir_name}' directory created\r\n".encode())
             else:
                 abs_path = os.path.join(self.cwd(), dir_name)
                 os.mkdir(abs_path)
+                # Log the action in the database
+                self.log_action(username, f"MKD: {dir_name}")
                 self.client.send(f"257 '{abs_path}' directory created\r\n".encode())
         except FileExistsError:
             self.client.send(f"550 Directory '{dir_name}' already exists\r\n".encode())
         except Exception as e:
             self.client.send(f"550 Failed to create directory '{dir_name}': {str(e)}\r\n".encode())
 
-    def PWD(self):
+    def PWD(self, username):
+        # Log the action in the database
+        self.log_action(username, f"PWD")
         respond = os.getcwd()
         self.client.send(f"257 Current working directory is '{respond}'\r\n".encode())
 
-    def RMD(self, dir_name):
+    def RMD(self, username, dir_name):
         if os.path.isabs(dir_name):
             None
         else:
@@ -317,16 +330,42 @@ class FTPthread(threading.Thread):
         try:
             if is_empty is True:
                 os.rmdir(dir_name)
+                # Log the action in the database
+                self.log_action(username, f"RMD: {dir_name}")
                 self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())
             else:
                 os.removedirs(dir_name)
+                # Log the action in the database
+                self.log_action(username, f"RMD: {dir_name}")
                 self.client.send(f"250 Directory '{dir_name}' deleted successfully\r\n".encode())
         except:
             self.client.send(f"550 Directory '{dir_name}' cant be removed\r\n".encode())
 
+    # method to log actions in the database
+    def log_action(self, username, action):
+        try:
+            self.report_cursor.execute("INSERT INTO user_actions (username, action) VALUES (?, ?)", (username, action))
+            self.report_conn.commit()
+        except Exception as e:
+            print(f"Failed to log action: {e}")
+
     def REPORT(self):
-        respond = os.getcwd()
-        self.client.send(f"257 Current working directory is '{respond}'\r\n".encode())
+        try:
+            report = '..::Server-Report::..\n'
+            # Perform database operations using the new connection and cursor
+            self.report_cursor.execute("SELECT * FROM user_actions")
+            actions = self.report_cursor.fetchall()
+            for action in actions:
+                report += f'{action}\n'  # Display actions or send them to the client as needed
+
+            # Close the new connection and cursor
+            self.report_cursor.close()
+            self.report_conn.close()
+
+            self.client.send(f"{report}\n257 Report generated successfully\r\n".encode())
+        except Exception as e:
+            self.client.send(f"550 Failed to generate report: {str(e)}\r\n".encode())
+
 
 
 class FTP_server:
@@ -349,9 +388,9 @@ class FTP_server:
             quit()
 
     def startt(self):
-        conn = sqlite3.connect('users.db')
+        conn = sqlite3.connect('users.db', check_same_thread=False)
         cursor = conn.cursor()
-
+        # Users table
         cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,7 +398,7 @@ class FTP_server:
                     password TEXT
                 )
             ''')
-
+        # user_permissions table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_permissions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,6 +407,19 @@ class FTP_server:
                 authorized_users TEXT
             )
         ''')
+
+        report_conn = sqlite3.connect('user_actions.db', check_same_thread=False)
+        report_cursor = report_conn.cursor()
+
+        # user_actions table
+        report_cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS user_actions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        action_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        username TEXT,
+                        action TEXT
+                    )
+                ''')
 
         print('...< FTP SERVER STARTED >...')
         self.start_socket()
