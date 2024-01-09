@@ -21,12 +21,12 @@ while True:
         response = client.recv(1024).decode()
         print(response)
     user_input = input(">> ")
-    if user_input.split(' ')[0].upper().startswith('RETR')  :
+    if user_input.split(' ')[0].upper().startswith('RETR'):
+
         client.send('RETR A-Cat.jpg'.encode())
         response = client.recv(1024).decode()
-        client.send('KIR'.encode())
-        
-        
+        client.send('Response'.encode())
+
         file_size_str = client.recv(1024)
         file_size = int(file_size_str)
         client.sendall(b'ACK')
@@ -35,18 +35,13 @@ while True:
             data = client.recv(1024)
             received_data += data
 
-
         with open('A-Cat.jpg', 'wb') as file:
             file.write(received_data)
         client.send('FINISH'.encode())
         res = client.recv(1024).decode()
         print(res)
-          
-        continue
-        
-        
-        
 
+        continue
 
     if user_input.upper() == 'QUIT':
         client.send("QUIT\r\n".encode())

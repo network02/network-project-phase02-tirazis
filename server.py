@@ -168,9 +168,13 @@ class FTPthread(threading.Thread):
                 # Download a file from server
                 elif command.startswith('RETR'):
                     filename = command[5:]
-                    self.RETR(filename)
+                    if check_access(filename, username):
+                        self.RETR(username, filename)
+                        continue
+                    else:
+                        self.client.send("550 Permission denied\r\n".encode())
                     continue
-                       
+
                 # Upload a file to server
                 elif command.startswith('STOR'):
                     filename = command.split(' ')[1]
@@ -193,18 +197,22 @@ class FTPthread(threading.Thread):
                 # Create a new directory
                 elif command.startswith('MKD'):
                     dir_name = command[4:]
-                    self.MKD(dir_name)
+                    self.MKD(username, dir_name)
                     continue
                 # Returns the current working directory
                 elif command.startswith('PWD'):
-                    self.PWD()
+                    self.PWD(username)
                     continue
                 #
                 elif command.startswith('RMD'):
                     dir_name = command[4:]
-                    self.RMD(dir_name)
+                    if check_access(filename, username):
+                        self.RMD(username, dir_name)
+                        continue
+                    else:
+                        self.client.send("550 Permission denied\r\n".encode())
                     continue
-                 # Change directory in server side
+                # Change directory in server side
                 elif command.startswith('CWD'):
                     dir_name = command[4:]
                     self.CWD(dir_name)
@@ -217,6 +225,7 @@ class FTPthread(threading.Thread):
                     print('(!) Generating server-logs report for admin')
                     self.REPORT()
                     continue
+                # Default unknown command
                 else:
                     self.client.send('(!) Command unrecognized! Try a different command.'.encode())
                     continue
@@ -229,8 +238,7 @@ class FTPthread(threading.Thread):
         except Exception as e:
             error_msg = f"An error occurred while closing the database connection: {e}"
 
-            
-    def LIST(self, pathname=''):
+    def LIST(self, username, pathname=''):
 
         try:
             if pathname:
@@ -253,12 +261,11 @@ class FTPthread(threading.Thread):
         except Exception as e:
             self.client.send(f"550 Failed to list directory '{pathname}': {str(e)}\r\n".encode())
 
-    def RETR(self, filename):
-        self.client.send("226 Transfer complete\r\n".encode())
+    def RETR(self, username, filename):
+        self.client.send("226 Transfer Began\r\n".encode())
         # Change this to the path of your JPEG file
         res = self.client.recv(1024).decode()
         print(res)
-        
 
         with open(filename, 'rb') as file:
             file_data = file.read()
@@ -267,12 +274,12 @@ class FTPthread(threading.Thread):
         file_size = len(file_data)
         self.client.sendall(str(file_size).encode())
 
-
         self.client.recv(1024)
         self.client.sendall(file_data)
 
         self.client.recv(1024)
-        
+        # Log the action in the database
+        self.log_action(username, f"RETR: {filename}")
         self.client.send("226 Transfer complete\r\n".encode())
 
     def STOR(self, filename):
@@ -382,7 +389,6 @@ class FTPthread(threading.Thread):
             self.client.send(f"{report}\n257 Report generated successfully\r\n".encode())
         except Exception as e:
             self.client.send(f"550 Failed to generate report: {str(e)}\r\n".encode())
-
 
 
 class FTP_server:
