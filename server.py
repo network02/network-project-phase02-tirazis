@@ -177,9 +177,13 @@ class FTPthread(threading.Thread):
 
                 # Upload a file to server
                 elif command.startswith('STOR'):
-                    self.STOR()
+                    filename = command.split(' ')[1]
+                    if check_access(filename, username):
+                        self.RETR(filename)
+                        continue
+                    else:
+                        self.client.send("550 Permission denied\r\n".encode())
                     continue
-
 
                 # Delete a file in server
                 elif command.startswith('DELE'):
@@ -234,20 +238,6 @@ class FTPthread(threading.Thread):
         except Exception as e:
             error_msg = f"An error occurred while closing the database connection: {e}"
 
-    def STOR(self):
-        self.client.send('DONE'.encode())
-        file_size_str = self.client.recv(1024).decode()
-        file_size = int(file_size_str)
-        self.client.sendall(b'ACK')
-        received_data = b''
-        while len(received_data) < file_size:
-            data = self.client.recv(1024)
-            received_data += data
-        with open('A-Cat.jpg', 'wb') as file:
-            file.write(received_data)
-
-        self.client.send('ALL DONE'.encode())
-
     def LIST(self, username, pathname=''):
 
         try:
@@ -291,6 +281,33 @@ class FTPthread(threading.Thread):
         # Log the action in the database
         self.log_action(username, f"RETR: {filename}")
         self.client.send("226 Transfer complete\r\n".encode())
+
+    def STOR(self, filename):
+        if not filename:
+            self.client.send('501 Missing arguments <filename>.\r\n'.encode())
+            return
+
+        try:
+            file_write = open(filename, 'wb')  # Open in binary mode for files
+            while True:
+                data = self.client.recv(1024)
+                if not data:
+                    break
+                file_write.write(data)
+
+            self.client.send('226 Transfer complete.\r\n'.encode())
+        except IOError as e:
+            print(f'ERROR: {str(self.client_address)}: {str(e)}')
+            self.client.send('425 Error writing file.\r\n'.encode())
+        except Exception as e:
+            print(f'ERROR: {str(self.client_address)}: {str(e)}')
+            self.client.send('451 Requested action aborted: local error in processing.\r\n'.encode())
+        finally:
+            try:
+                file_write.close()
+                self.client.close
+            except Exception as e:
+                print(f'ERROR: {str(self.client_address)}: {str(e)}')
 
     def DELE(self, username, filename):
         try:
