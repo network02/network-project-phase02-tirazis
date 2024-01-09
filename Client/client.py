@@ -22,9 +22,9 @@ while True:
         print(response)
     user_input = input(">> ")
     if user_input.split(' ')[0].upper().startswith('RETR')  :
-        client.send('RETR A-Cat.jpg'.encode())
+        client.send(user_input.encode())
         response = client.recv(1024).decode()
-        client.send('KIR'.encode())
+        client.send('response'.encode())
         
         
         file_size_str = client.recv(1024)
@@ -42,6 +42,20 @@ while True:
         res = client.recv(1024).decode()
         print(res)
           
+        continue
+    if user_input.split(' ')[0].upper().startswith('STOR') :
+        client.send('STOR'.encode())
+        file_name = user_input[5:]
+        
+        response = client.recv(1024).decode()
+        with open(file_name, 'rb') as file:
+            file_data = file.read()
+        file_size_str = str(len(file_data))
+        client.sendall(file_size_str.encode())
+        response = client.recv(1024).decode()
+        client.sendall(file_data)
+        res = client.recv(1024).decode()
+        print(res)
         continue
         
         
