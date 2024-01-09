@@ -80,6 +80,7 @@ class FTPthread(threading.Thread):
         self.client_address = clientaddress
         self.data_address = (localip, dataport)
         self.cwd = os.getcwd
+
         threading.Thread.__init__(self)
 
         self.conn = sqlite3.connect('users.db', check_same_thread=False)  # Connect to the database
@@ -155,24 +156,21 @@ class FTPthread(threading.Thread):
         while True:
 
             command = self.client.recv(1024).decode().strip()
+
             try:
                 # Show the server items
                 if command.startswith('LIST'):
                     pathname = ''
-                    parts = command.split(' ')
-                    if len(parts) > 1:
-                        pathname = parts[1]
+                    if len(command) > 4:
+                        pathname = command[5:]
                     self.LIST(username, pathname)
                     continue
                 # Download a file from server
                 elif command.startswith('RETR'):
-                    filename = command.split(' ')[1]
-                    if check_access(filename, username):
-                        self.RETR(filename)
-                        continue
-                    else:
-                        self.client.send("550 Permission denied\r\n".encode())
+                    filename = command[5:]
+                    self.RETR(filename)
                     continue
+                       
                 # Upload a file to server
                 elif command.startswith('STOR'):
                     filename = command.split(' ')[1]
@@ -185,7 +183,7 @@ class FTPthread(threading.Thread):
 
                 # Delete a file in server
                 elif command.startswith('DELE'):
-                    filename = command.split(' ')[1]
+                    filename = command[5:]
                     if check_access(filename, username):
                         self.DELE(username, filename)
                         continue
@@ -194,7 +192,7 @@ class FTPthread(threading.Thread):
                     continue
                 # Create a new directory
                 elif command.startswith('MKD'):
-                    dir_name = command.split(' ')[1]
+                    dir_name = command[4:]
                     self.MKD(dir_name)
                     continue
                 # Returns the current working directory
@@ -203,8 +201,17 @@ class FTPthread(threading.Thread):
                     continue
                 #
                 elif command.startswith('RMD'):
-                    dir_name = command.split(' ')[1]
+                    dir_name = command[4:]
                     self.RMD(dir_name)
+                    continue
+                 # Change directory in server side
+                elif command.startswith('CWD'):
+                    dir_name = command[4:]
+                    self.CWD(dir_name)
+                    continue
+                elif command.startswith('CDUP'):
+                    dir_name = command[4:]
+                    self.CDUP()
                     continue
                 elif command.startswith('REPORT') and roll == 2:
                     print('(!) Generating server-logs report for admin')
@@ -222,7 +229,9 @@ class FTPthread(threading.Thread):
         except Exception as e:
             error_msg = f"An error occurred while closing the database connection: {e}"
 
-    def LIST(self, username, pathname=''):
+            
+    def LIST(self, pathname=''):
+
         try:
             if pathname:
                 files = os.listdir(pathname)
@@ -245,18 +254,26 @@ class FTPthread(threading.Thread):
             self.client.send(f"550 Failed to list directory '{pathname}': {str(e)}\r\n".encode())
 
     def RETR(self, filename):
-        try:
-            with open(filename, 'rb') as file:
-                file_data = file.read()
-                file_size = len(file_data)
-                response = f"150 Opening BINARY mode data connection for {filename} ({file_size} bytes)\r\n"
-                self.client.send(response.encode())
-                self.client.sendall(file_data)
-            self.client.send("226 Transfer complete\r\n".encode())
-        except FileNotFoundError:
-            self.client.send(f"550 File '{filename}' not found\r\n".encode())
-        except Exception as e:
-            self.client.send(f"550 Failed to retrieve file '{filename}': {str(e)}\r\n".encode())
+        self.client.send("226 Transfer complete\r\n".encode())
+        # Change this to the path of your JPEG file
+        res = self.client.recv(1024).decode()
+        print(res)
+        
+
+        with open(filename, 'rb') as file:
+            file_data = file.read()
+
+        # Send the file size first
+        file_size = len(file_data)
+        self.client.sendall(str(file_size).encode())
+
+
+        self.client.recv(1024)
+        self.client.sendall(file_data)
+
+        self.client.recv(1024)
+        
+        self.client.send("226 Transfer complete\r\n".encode())
 
     def STOR(self, filename):
         if not filename:
