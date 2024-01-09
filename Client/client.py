@@ -18,9 +18,35 @@ n = 0
 while True:
     if n == 0:
         client.send('FIRST'.encode())
-        response = client.recv(1024).decode().strip()
+        response = client.recv(1024).decode()
         print(response)
     user_input = input(">> ")
+    if user_input.split(' ')[0].upper().startswith('RETR')  :
+        client.send('RETR A-Cat.jpg'.encode())
+        response = client.recv(1024).decode()
+        client.send('KIR'.encode())
+        
+        
+        file_size_str = client.recv(1024)
+        file_size = int(file_size_str)
+        client.sendall(b'ACK')
+        received_data = b''
+        while len(received_data) < file_size:
+            data = client.recv(1024)
+            received_data += data
+
+
+        with open('A-Cat.jpg', 'wb') as file:
+            file.write(received_data)
+        client.send('FINISH'.encode())
+        res = client.recv(1024).decode()
+        print(res)
+          
+        continue
+        
+        
+        
+
 
     if user_input.upper() == 'QUIT':
         client.send("QUIT\r\n".encode())
