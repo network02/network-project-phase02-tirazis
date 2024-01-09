@@ -1,76 +1,8 @@
 import socket
 import os
-import sqlite3
 import threading
 import time
-
-commands_list = [
-    ("LOGIN\t", "Login to the FTP server: LOGIN <username> <password>"),
-    ("SIGNUP\t", "Create a new user: SIGNUP <username> <password>"),
-    ("LIST\t", "List contents of a directory: LIST <path>"),
-    ("RETR\t", "Retrieve a file: RETR <filename>"),
-    ("STOR\t", "Store a file: STOR <filename>"),
-    ("DELE\t", "Delete a file: DELE <filename>"),
-    ("MKD\t", "Make a directory: MKD <directory name>"),
-    ("RMD\t", "Remove a directory: RMD <directory name>"),
-    ("PWD\t", "Print working directory: PWD"),
-    ("CWD\t", "Change working directory: CWD <directory name>"),
-    ("CDUP\t", "Change to the parent directory: CDUP"),
-    ("QUIT\t", "Quit the FTP session: QUIT"),
-    ("REPORT\t", "(Only for admin) Generate a server report: REPORT")
-]
-
-
-# Function to add a new user to the database
-def create_user(username, password):
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-
-    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-
-    conn.commit()
-    conn.close()
-
-
-# Function to handle user authentication against the database
-def authenticate_user(username, password):
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT password FROM users WHERE username=?", (username,))
-    result = cursor.fetchone()
-
-    conn.close()
-
-    if result and result[0] == password:
-        return True
-    else:
-        return False
-
-
-def check_access(filename, username):
-    try:
-        conn = sqlite3.connect('users.db')
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT accessibility, authorized_users FROM user_permissions WHERE filename=?", (filename,))
-        access_data = cursor.fetchone()
-
-        if access_data:
-            accessibility, authorized_users = access_data
-            if accessibility == 'public':
-                return True
-            elif accessibility == 'private' and authorized_users:
-                authorized_users = authorized_users.split(',')  # Convert to list
-                if username in authorized_users:
-                    return True
-
-        return False
-
-    except Exception as e:
-        error_msg = f"An error occurred while checking access: {e}"
-        print(error_msg)
-        return False
+from db_manager import *
 
 
 class FTPthread(threading.Thread):
@@ -125,11 +57,11 @@ class FTPthread(threading.Thread):
                         break
                     else:
                         self.client.send("530 Login incorrect\r\n".encode())
-                        break
+                        continue
                 except:
                     # Log the action in the database
                     self.log_action(username, f"QUIT")
-                    print(f"(!) USER \"{username}\" leaved from server")
+                    print(f"(!) USER \"{username}\" leaved from server.")
                     break
                     # Handle SIGNUP
             elif user_command == 'SIGNUP':
@@ -197,6 +129,7 @@ class FTPthread(threading.Thread):
                 # Create a new directory
                 elif command.startswith('MKD'):
                     dir_name = command[4:]
+                    dir_name = command.split(' ')[1]
                     self.MKD(username, dir_name)
                     continue
                 # Returns the current working directory
@@ -311,10 +244,19 @@ class FTPthread(threading.Thread):
 
     def DELE(self, username, filename):
         try:
-            os.remove(filename)
-            # Log the action in the database
-            self.log_action(username, f"DELE: {filename}")
-            self.client.send(f"250 File '{filename}' deleted successfully\r\n".encode())
+            # Confirm deletion with the client
+            self.client.send(f"250 Do you want to delete '{filename}'? (Y/N)\r\n".encode())
+            confirmation = self.client.recv(1024).decode().strip().upper()
+
+            if confirmation == 'Y':
+                os.remove(filename)
+                # Log the action in the database
+                self.log_action(username, f"DELE: {filename}")
+                self.client.send(f"250 File '{filename}' deleted successfully\r\n".encode())
+            elif confirmation == 'N':
+                self.client.send(f"250 Deletion of '{filename}' canceled\r\n".encode())
+            else:
+                self.client.send("550 Invalid choice. Deletion canceled\r\n".encode())
 
         except FileNotFoundError:
             self.client.send(f"550 File '{filename}' not found\r\n".encode())
